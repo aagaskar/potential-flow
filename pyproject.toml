@@ -1,0 +1,8 @@
+[project]
+name = "potential-flow"
+version = "0.1.0"
+description = "Joukowski Airfoil Potential Flow Visualizer"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+]
