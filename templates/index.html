@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Joukowski Airfoil — Potential Flow</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0e17;color:#c8d6e5;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;display:flex}
+  #sidebar{width:320px;min-width:320px;background:#111827;padding:20px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;border-right:1px solid #1e293b}
+  #sidebar h1{font-size:18px;font-weight:700;color:#e2e8f0;letter-spacing:.3px}
+  #sidebar h2{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#64748b;margin-top:4px}
+  .ctrl{display:flex;flex-direction:column;gap:3px}
+  .ctrl label{font-size:12px;color:#94a3b8;display:flex;justify-content:space-between}
+  .ctrl label span{color:#60a5fa;font-weight:600;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:#1e293b;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#3b82f6;cursor:pointer;border:2px solid #1e293b}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#3b82f6;cursor:pointer;border:2px solid #1e293b}
+  #info-panel{background:#0f172a;border-radius:8px;padding:12px;font-size:12px;line-height:1.7;border:1px solid #1e293b}
+  #info-panel .row{display:flex;justify-content:space-between}
+  #info-panel .val{color:#60a5fa;font-weight:600;font-variant-numeric:tabular-nums}
+  #canvas-wrap{flex:1;position:relative}
+  canvas{display:block;width:100%;height:100%}
+  #legend{position:absolute;bottom:16px;right:16px;background:rgba(15,23,42,.85);border-radius:8px;padding:10px 14px;font-size:11px;border:1px solid #1e293b;pointer-events:none}
+  #legend .grad{width:160px;height:10px;border-radius:3px;margin:6px 0 2px}
+  #legend .labels{display:flex;justify-content:space-between;font-size:10px;color:#64748b}
+  .btn-row{display:flex;gap:8px}
+  button{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;transition:all .15s}
+  button:hover{background:#334155;color:#e2e8f0}
+  button.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+  #hint{font-size:11px;color:#475569;line-height:1.5}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Joukowski Airfoil</h1>
+  <h2>Potential Flow Visualizer</h2>
+
+  <div class="ctrl">
+    <label>Angle of Attack <span id="v-alpha">5°</span></label>
+    <input type="range" id="alpha" min="-15" max="15" step="0.5" value="5">
+  </div>
+  <div class="ctrl">
+    <label>Wind Speed <span id="v-uinf">1.0</span></label>
+    <input type="range" id="uinf" min="0.2" max="3.0" step="0.05" value="1.0">
+  </div>
+  <div class="ctrl">
+    <label>Thickness (ε) <span id="v-eps">0.10</span></label>
+    <input type="range" id="eps" min="0.01" max="0.30" step="0.005" value="0.10">
+  </div>
+  <div class="ctrl">
+    <label>Camber (δ) <span id="v-delta">0.05</span></label>
+    <input type="range" id="delta" min="-0.15" max="0.20" step="0.005" value="0.05">
+  </div>
+
+  <h2>Display</h2>
+  <div class="ctrl">
+    <label>Particle Count <span id="v-np">600</span></label>
+    <input type="range" id="nparticles" min="100" max="1500" step="50" value="600">
+  </div>
+  <div class="ctrl">
+    <label>Trail Length <span id="v-trail">18</span></label>
+    <input type="range" id="trail" min="3" max="40" step="1" value="18">
+  </div>
+
+  <div class="btn-row">
+    <button id="btn-pressure" class="active">Pressure</button>
+    <button id="btn-streamlines">Static Lines</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-reset">Reset</button>
+  </div>
+
+  <div id="info-panel">
+    <div class="row"><span>Circulation Γ</span><span class="val" id="d-gamma">—</span></div>
+    <div class="row"><span>Lift coeff. C<sub>L</sub></span><span class="val" id="d-cl">—</span></div>
+    <div class="row"><span>Cylinder radius R</span><span class="val" id="d-R">—</span></div>
+    <div class="row"><span>β (trailing-edge angle)</span><span class="val" id="d-beta">—</span></div>
+    <div class="row"><span>FPS</span><span class="val" id="d-fps">—</span></div>
+  </div>
+
+  <div id="hint">
+    Drag on the canvas to pan. Scroll to zoom.<br>
+    The Kutta condition sets the circulation so flow
+    leaves the trailing edge smoothly.
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="legend">
+    <div>Pressure coefficient C<sub>p</sub></div>
+    <div class="grad" id="cp-grad"></div>
+    <div class="labels"><span>−3</span><span>0</span><span>+1</span></div>
+  </div>
+</div>
+
+<script>
+// ===== Complex number helpers =====
+const cx = (re, im) => [re, im || 0];
+const cRe = z => z[0], cIm = z => z[1];
+const cAdd = (a, b) => [a[0]+b[0], a[1]+b[1]];
+const cSub = (a, b) => [a[0]-b[0], a[1]-b[1]];
+const cMul = (a, b) => [a[0]*b[0]-a[1]*b[1], a[0]*b[1]+a[1]*b[0]];
+const cDiv = (a, b) => {
+  const d = b[0]*b[0]+b[1]*b[1];
+  return [(a[0]*b[0]+a[1]*b[1])/d, (a[1]*b[0]-a[0]*b[1])/d];
+};
+const cConj = z => [z[0], -z[1]];
+const cAbs = z => Math.hypot(z[0], z[1]);
+const cArg = z => Math.atan2(z[1], z[0]);
+const cExp = z => { const r=Math.exp(z[0]); return [r*Math.cos(z[1]), r*Math.sin(z[1])]; };
+const cScale = (z, s) => [z[0]*s, z[1]*s];
+const cSqrt = z => {
+  const r = Math.sqrt(cAbs(z)), th = cArg(z)/2;
+  return [r*Math.cos(th), r*Math.sin(th)];
+};
+
+// ===== Canvas setup =====
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, dpr;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== View transform (pan & zoom) =====
+let view = { cx: 0.3, cy: 0, scale: 0 };
+function resetView() {
+  view.cx = 0.3; view.cy = 0;
+  view.scale = Math.min(W, H) / 7;
+}
+resetView();
+
+function toScreen(x, y) {
+  return [W/2 + (x - view.cx) * view.scale, H/2 - (y - view.cy) * view.scale];
+}
+function fromScreen(sx, sy) {
+  return [(sx - W/2) / view.scale + view.cx, -(sy - H/2) / view.scale + view.cy];
+}
+
+// Mouse pan & zoom
+let dragging = false, lastMx, lastMy;
+canvas.addEventListener('mousedown', e => { dragging = true; lastMx = e.clientX; lastMy = e.clientY; });
+window.addEventListener('mouseup', () => dragging = false);
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  view.cx -= (e.clientX - lastMx) / view.scale;
+  view.cy += (e.clientY - lastMy) / view.scale;
+  lastMx = e.clientX; lastMy = e.clientY;
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.92 : 1.08;
+  view.scale *= factor;
+}, { passive: false });
+
+// ===== UI controls =====
+const sl = id => document.getElementById(id);
+const sliders = {
+  alpha: sl('alpha'), uinf: sl('uinf'),
+  eps: sl('eps'), delta: sl('delta'),
+  nparticles: sl('nparticles'), trail: sl('trail')
+};
+const displays = {
+  alpha: sl('v-alpha'), uinf: sl('v-uinf'),
+  eps: sl('v-eps'), delta: sl('v-delta'),
+  np: sl('v-np'), trail: sl('v-trail')
+};
+
+function readParams() {
+  return {
+    alpha: +sliders.alpha.value * Math.PI / 180,
+    Uinf: +sliders.uinf.value,
+    eps: +sliders.eps.value,
+    delta: +sliders.delta.value,
+    nParticles: +sliders.nparticles.value,
+    trailLen: +sliders.trail.value
+  };
+}
+
+function updateDisplays() {
+  displays.alpha.textContent = sliders.alpha.value + '°';
+  displays.uinf.textContent = (+sliders.uinf.value).toFixed(2);
+  displays.eps.textContent = (+sliders.eps.value).toFixed(3);
+  displays.delta.textContent = (+sliders.delta.value).toFixed(3);
+  displays.np.textContent = sliders.nparticles.value;
+  displays.trail.textContent = sliders.trail.value;
+}
+
+Object.values(sliders).forEach(s => s.addEventListener('input', () => {
+  updateDisplays();
+  needsReset = true;
+}));
+updateDisplays();
+
+let showPressure = true, showStaticLines = false, paused = false, needsReset = true;
+sl('btn-pressure').addEventListener('click', function() { showPressure = !showPressure; this.classList.toggle('active'); });
+sl('btn-streamlines').addEventListener('click', function() { showStaticLines = !showStaticLines; this.classList.toggle('active'); });
+sl('btn-pause').addEventListener('click', function() { paused = !paused; this.textContent = paused ? 'Play' : 'Pause'; this.classList.toggle('active'); });
+sl('btn-reset').addEventListener('click', () => { needsReset = true; resetView(); });
+
+// ===== Joukowski flow model =====
+class JoukowskiFlow {
+  constructor(params) {
+    this.Uinf = params.Uinf;
+    this.alpha = params.alpha;
+    this.c = 1.0; // Joukowski constant
+
+    // Circle center offset: z0 = (-eps, delta)
+    this.z0 = cx(-params.eps, params.delta);
+
+    // Radius: circle passes through z = c
+    this.R = cAbs(cSub(cx(this.c, 0), this.z0));
+
+    // Beta angle: argument of (c - z0)
+    this.beta = cArg(cSub(cx(this.c, 0), this.z0));
+
+    // Kutta condition circulation
+    this.Gamma = 4 * Math.PI * this.R * this.Uinf * Math.sin(this.alpha + this.beta);
+
+    // Lift coefficient (per unit span, normalised by chord ≈ 4c for thin airfoils)
+    // Using Kutta-Joukowski theorem: L = rho * U * Gamma
+    // CL = L / (0.5 * rho * U^2 * chord) = 2*Gamma / (U * chord)
+    this.chord = this._computeChord();
+    this.CL = 2 * this.Gamma / (this.Uinf * this.chord);
+  }
+
+  _computeChord() {
+    // Leading edge: point on circle farthest from trailing edge (z=c)
+    // Trailing edge in zeta-plane: zeta(c) = c + c^2/c = 2c
+    // Leading edge: z = z0 - R * (c - z0)/|c - z0|, then map
+    const dir = cDiv(cSub(cx(this.c, 0), this.z0), cx(this.R, 0));
+    const zLE = cSub(this.z0, cScale(dir, this.R));
+    const zetaLE = this.joukowski(zLE);
+    const zetaTE = this.joukowski(cx(this.c, 0));
+    return cAbs(cSub(zetaTE, zetaLE));
+  }
+
+  // Joukowski transform: zeta = z + c^2/z
+  joukowski(z) {
+    return cAdd(z, cDiv(cx(this.c * this.c, 0), z));
+  }
+
+  // Complex velocity in the z-plane (dw/dz)
+  velocityZ(z) {
+    const zr = cSub(z, this.z0);
+    const r2 = cAbs(zr);
+    if (r2 < this.R * 0.95) return cx(0, 0); // inside cylinder
+
+    const eNia = cx(Math.cos(-this.alpha), Math.sin(-this.alpha));
+    const ePia = cx(Math.cos(this.alpha), Math.sin(this.alpha));
+
+    // w(z) = U * [e^{-ia} - R^2/(z-z0)^2 * e^{ia}] + i*Gamma/(2*pi*(z-z0))
+    const zr2 = cMul(zr, zr);
+    const term1 = cScale(eNia, this.Uinf);
+    const term2 = cScale(cMul(cDiv(cx(this.R * this.R, 0), zr2), ePia), -this.Uinf);
+    const term3 = cDiv(cx(0, this.Gamma / (2 * Math.PI)), zr);
+
+    return cAdd(cAdd(term1, term2), term3);
+  }
+
+  // Velocity in the zeta-plane at point z (in z-plane)
+  velocityZeta(z) {
+    const wz = this.velocityZ(z);
+    // dzeta/dz = 1 - c^2/z^2
+    const dz = cSub(cx(1, 0), cDiv(cx(this.c * this.c, 0), cMul(z, z)));
+    const dAbs = cAbs(dz);
+    if (dAbs < 1e-6) return cx(0, 0); // near critical point
+    return cDiv(wz, dz);
+  }
+
+  // Pressure coefficient at point z on the cylinder surface
+  cpAtZ(z) {
+    const wZeta = this.velocityZeta(z);
+    const speed = cAbs(wZeta);
+    return 1 - (speed * speed) / (this.Uinf * this.Uinf);
+  }
+
+  // Get airfoil points (map circle through Joukowski)
+  airfoilPoints(n) {
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const th = 2 * Math.PI * i / n;
+      const z = cAdd(this.z0, cx(this.R * Math.cos(th), this.R * Math.sin(th)));
+      const zeta = this.joukowski(z);
+      pts.push({ zeta, z, theta: th, cp: this.cpAtZ(z) });
+    }
+    return pts;
+  }
+
+  // Check if z-plane point is inside the cylinder
+  insideCylinder(z) {
+    return cAbs(cSub(z, this.z0)) < this.R * 1.02;
+  }
+}
+
+// ===== Particle System =====
+class ParticleSystem {
+  constructor() {
+    this.particles = [];
+    this.maxParticles = 600;
+    this.trailLen = 18;
+  }
+
+  reset(flow, maxP, trailLen) {
+    this.maxParticles = maxP;
+    this.trailLen = trailLen;
+    this.particles = [];
+    for (let i = 0; i < maxP; i++) {
+      this.particles.push(this._newParticle(flow, true));
+    }
+  }
+
+  _newParticle(flow, randomX) {
+    // Seed particles from a vertical line upstream in the zeta-plane
+    // We need to place them in the z-plane though
+    // Seed upstream: x from -4 to -2 (if randomX) or at x = -3.5
+    const xRange = 3.5;
+    const yRange = 3.0;
+    const zx = randomX ? -xRange + Math.random() * (xRange * 0.5) : -xRange;
+    const zy = (Math.random() - 0.5) * 2 * yRange;
+    const z = cx(zx, zy);
+    if (flow.insideCylinder(z)) return this._newParticle(flow, randomX);
+    const zeta = flow.joukowski(z);
+    return {
+      z: z,
+      trail: [{ x: zeta[0], y: zeta[1] }],
+      age: randomX ? Math.floor(Math.random() * this.trailLen) : 0
+    };
+  }
+
+  advect(flow, dt) {
+    const steps = 3; // sub-steps for accuracy
+    const subDt = dt / steps;
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+
+      for (let s = 0; s < steps; s++) {
+        // RK2 integration in z-plane
+        const w1 = flow.velocityZ(p.z);
+        // velocity = conjugate of complex velocity (u - iv) -> (u, v)
+        const v1 = cConj(w1);
+
+        const zMid = cAdd(p.z, cScale(v1, subDt * 0.5));
+        if (flow.insideCylinder(zMid)) { p.dead = true; break; }
+
+        const w2 = flow.velocityZ(zMid);
+        const v2 = cConj(w2);
+
+        p.z = cAdd(p.z, cScale(v2, subDt));
+
+        if (flow.insideCylinder(p.z)) { p.dead = true; break; }
+      }
+
+      if (p.dead) {
+        this.particles[i] = this._newParticle(flow, false);
+        continue;
+      }
+
+      const zeta = flow.joukowski(p.z);
+      p.trail.push({ x: zeta[0], y: zeta[1] });
+      if (p.trail.length > this.trailLen) p.trail.shift();
+      p.age++;
+
+      // Reset if out of bounds
+      const zx = p.z[0], zy = p.z[1];
+      if (zx > 5 || zx < -5 || Math.abs(zy) > 4) {
+        this.particles[i] = this._newParticle(flow, false);
+      }
+    }
+  }
+
+  draw(ctx, toScreen, flow) {
+    for (const p of this.particles) {
+      if (p.trail.length < 2) continue;
+      const len = p.trail.length;
+      ctx.beginPath();
+      const s0 = toScreen(p.trail[0].x, p.trail[0].y);
+      ctx.moveTo(s0[0], s0[1]);
+      for (let j = 1; j < len; j++) {
+        const s = toScreen(p.trail[j].x, p.trail[j].y);
+        ctx.lineTo(s[0], s[1]);
+      }
+      // Color: speed-based hue
+      const speed = cAbs(flow.velocityZeta(p.z));
+      const normSpeed = Math.min(speed / (flow.Uinf * 2.5), 1);
+      const hue = 210 - normSpeed * 120; // blue -> cyan -> green
+      const alpha = Math.min(p.age / 8, 0.7) * (0.3 + 0.7 * (1 - normSpeed * 0.3));
+      ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+      ctx.lineWidth = 1.2 + normSpeed * 0.8;
+      ctx.stroke();
+    }
+  }
+}
+
+// ===== Static streamlines (contour-like) via integration =====
+function computeStaticStreamlines(flow, nLines) {
+  const lines = [];
+  const ySpacing = 4.0 / nLines;
+  for (let i = 0; i < nLines; i++) {
+    const y0 = -2.0 + (i + 0.5) * ySpacing;
+    const z0 = cx(-4.0, y0);
+    if (flow.insideCylinder(z0)) continue;
+
+    const line = [];
+    let z = z0;
+    const dt = 0.02 / flow.Uinf;
+    for (let step = 0; step < 600; step++) {
+      const zeta = flow.joukowski(z);
+      line.push({ x: zeta[0], y: zeta[1] });
+
+      const w = flow.velocityZ(z);
+      const v = cConj(w);
+      const zNew = cAdd(z, cScale(v, dt));
+
+      if (flow.insideCylinder(zNew) || zNew[0] > 5 || Math.abs(zNew[1]) > 3.5) break;
+      z = zNew;
+    }
+    if (line.length > 10) lines.push(line);
+  }
+  return lines;
+}
+
+// ===== Pressure color map =====
+function cpColor(cp) {
+  // cp ranges from about -3 to 1
+  // Map: low pressure (negative cp) = red, stagnation (cp=1) = blue
+  const t = (cp + 3) / 4; // 0..1 for cp in [-3, 1]
+  const clamped = Math.max(0, Math.min(1, t));
+  // Blue (high pressure) -> White -> Red (low pressure)
+  let r, g, b;
+  if (clamped < 0.5) {
+    const s = clamped * 2;
+    r = 220 - s * 40;  // red high
+    g = 60 + s * 120;
+    b = 60 + s * 80;
+  } else {
+    const s = (clamped - 0.5) * 2;
+    r = 180 - s * 140;
+    g = 180 + s * 20;
+    b = 140 + s * 115;
+  }
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+
+// Build gradient for legend
+(function() {
+  const grad = document.getElementById('cp-grad');
+  let css = 'linear-gradient(to right';
+  for (let i = 0; i <= 20; i++) {
+    const cp = -3 + 4 * i / 20;
+    css += ',' + cpColor(cp);
+  }
+  grad.style.background = css + ')';
+})();
+
+// ===== Main render loop =====
+const particles = new ParticleSystem();
+let flow = null;
+let staticLines = [];
+let frameCount = 0, fpsTime = 0, fps = 0;
+
+function frame(t) {
+  requestAnimationFrame(frame);
+
+  const params = readParams();
+
+  // Rebuild flow model on parameter change
+  if (needsReset || !flow) {
+    flow = new JoukowskiFlow(params);
+    particles.reset(flow, params.nParticles, params.trailLen);
+    if (showStaticLines) staticLines = computeStaticStreamlines(flow, 30);
+    needsReset = false;
+
+    // Update info panel
+    sl('d-gamma').textContent = flow.Gamma.toFixed(3);
+    sl('d-cl').textContent = flow.CL.toFixed(3);
+    sl('d-R').textContent = flow.R.toFixed(4);
+    sl('d-beta').textContent = (flow.beta * 180 / Math.PI).toFixed(2) + '°';
+  }
+
+  // FPS counter
+  frameCount++;
+  if (t - fpsTime > 500) {
+    fps = Math.round(frameCount * 1000 / (t - fpsTime));
+    frameCount = 0; fpsTime = t;
+    sl('d-fps').textContent = fps;
+  }
+
+  // Advect particles
+  if (!paused) {
+    const dt = 0.012 / Math.max(params.Uinf, 0.3);
+    particles.trailLen = params.trailLen;
+    particles.advect(flow, dt);
+  }
+
+  // ===== Draw =====
+  ctx.clearRect(0, 0, W, H);
+
+  // Background grid
+  ctx.strokeStyle = 'rgba(30,41,59,0.5)';
+  ctx.lineWidth = 0.5;
+  const gridStep = 0.5;
+  const [x0, y0] = fromScreen(0, H);
+  const [x1, y1] = fromScreen(W, 0);
+  for (let gx = Math.floor(x0/gridStep)*gridStep; gx <= x1; gx += gridStep) {
+    const s = toScreen(gx, 0);
+    ctx.beginPath(); ctx.moveTo(s[0], 0); ctx.lineTo(s[0], H); ctx.stroke();
+  }
+  for (let gy = Math.floor(y0/gridStep)*gridStep; gy <= y1; gy += gridStep) {
+    const s = toScreen(0, gy);
+    ctx.beginPath(); ctx.moveTo(0, s[1]); ctx.lineTo(W, s[1]); ctx.stroke();
+  }
+
+  // Static streamlines
+  if (showStaticLines) {
+    ctx.strokeStyle = 'rgba(100,160,255,0.15)';
+    ctx.lineWidth = 1;
+    for (const line of staticLines) {
+      ctx.beginPath();
+      const s0 = toScreen(line[0].x, line[0].y);
+      ctx.moveTo(s0[0], s0[1]);
+      for (let j = 1; j < line.length; j++) {
+        const s = toScreen(line[j].x, line[j].y);
+        ctx.lineTo(s[0], s[1]);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Animated particles
+  particles.draw(ctx, toScreen, flow);
+
+  // Airfoil
+  const foilPts = flow.airfoilPoints(200);
+
+  // Fill airfoil
+  ctx.beginPath();
+  const fs0 = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+  ctx.moveTo(fs0[0], fs0[1]);
+  for (let i = 1; i < foilPts.length; i++) {
+    const s = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+    ctx.lineTo(s[0], s[1]);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#1e293b';
+  ctx.fill();
+
+  // Pressure colors on airfoil surface
+  if (showPressure) {
+    const n = foilPts.length;
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+      const p1 = toScreen(foilPts[i+1].zeta[0], foilPts[i+1].zeta[1]);
+      ctx.beginPath();
+      ctx.moveTo(p0[0], p0[1]);
+      ctx.lineTo(p1[0], p1[1]);
+      ctx.strokeStyle = cpColor(foilPts[i].cp);
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+  }
+
+  // Airfoil outline
+  ctx.beginPath();
+  ctx.moveTo(fs0[0], fs0[1]);
+  for (let i = 1; i < foilPts.length; i++) {
+    const s = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+    ctx.lineTo(s[0], s[1]);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = 'rgba(148,163,184,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Stagnation points indicator
+  ctx.fillStyle = '#f59e0b';
+  // Forward stagnation: approximate
+  const stag = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+
+  // Chord line (faint)
+  const TE = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+  const halfN = Math.floor(foilPts.length / 2);
+  const LE = toScreen(foilPts[halfN].zeta[0], foilPts[halfN].zeta[1]);
+  ctx.beginPath(); ctx.moveTo(TE[0], TE[1]); ctx.lineTo(LE[0], LE[1]);
+  ctx.strokeStyle = 'rgba(148,163,184,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Free-stream arrow
+  const arrowLen = 60;
+  const ax = W - 80, ay = 40;
+  const adx = arrowLen * Math.cos(-params.alpha), ady = arrowLen * Math.sin(-params.alpha);
+  ctx.beginPath();
+  ctx.moveTo(ax - adx/2, ay - ady/2);
+  ctx.lineTo(ax + adx/2, ay + ady/2);
+  ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
+  // arrowhead
+  const ahx = ax + adx/2, ahy = ay + ady/2;
+  const aAngle = Math.atan2(ady, adx);
+  ctx.beginPath();
+  ctx.moveTo(ahx, ahy);
+  ctx.lineTo(ahx - 10*Math.cos(aAngle-0.4), ahy - 10*Math.sin(aAngle-0.4));
+  ctx.moveTo(ahx, ahy);
+  ctx.lineTo(ahx - 10*Math.cos(aAngle+0.4), ahy - 10*Math.sin(aAngle+0.4));
+  ctx.stroke();
+  ctx.fillStyle = '#60a5fa'; ctx.font = '11px system-ui';
+  ctx.fillText('U∞', ax - 10, ay - 12);
+}
+
+// Recompute static lines when toggled on
+sl('btn-streamlines').addEventListener('click', () => {
+  if (showStaticLines && flow) staticLines = computeStaticStreamlines(flow, 30);
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
