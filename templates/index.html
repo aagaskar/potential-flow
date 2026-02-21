@@ -499,9 +499,22 @@ function frame(t) {
 
   // Advect particles
   if (!paused) {
-    const dt = 0.012 / Math.max(params.Uinf, 0.3);
+    const dt = 0.024 / Math.max(params.Uinf, 0.3);
     particles.trailLen = params.trailLen;
     particles.advect(flow, dt);
+  }
+
+  // Rotation for angle-of-attack visualization
+  const _zetaTE = flow.joukowski(cx(flow.c, 0));
+  const _dirLE = cDiv(cSub(cx(flow.c, 0), flow.z0), cx(flow.R, 0));
+  const _zLE = cSub(flow.z0, cScale(_dirLE, flow.R));
+  const _zetaLE = flow.joukowski(_zLE);
+  const rcx = (_zetaTE[0] + _zetaLE[0]) / 2;
+  const rcy = (_zetaTE[1] + _zetaLE[1]) / 2;
+  const cosA = Math.cos(-params.alpha), sinA = Math.sin(-params.alpha);
+  function toScreenR(x, y) {
+    const dx = x - rcx, dy = y - rcy;
+    return toScreen(rcx + dx*cosA - dy*sinA, rcy + dx*sinA + dy*cosA);
   }
 
   // ===== Draw =====
@@ -528,10 +541,10 @@ function frame(t) {
     ctx.lineWidth = 1;
     for (const line of staticLines) {
       ctx.beginPath();
-      const s0 = toScreen(line[0].x, line[0].y);
+      const s0 = toScreenR(line[0].x, line[0].y);
       ctx.moveTo(s0[0], s0[1]);
       for (let j = 1; j < line.length; j++) {
-        const s = toScreen(line[j].x, line[j].y);
+        const s = toScreenR(line[j].x, line[j].y);
         ctx.lineTo(s[0], s[1]);
       }
       ctx.stroke();
@@ -539,17 +552,17 @@ function frame(t) {
   }
 
   // Animated particles
-  particles.draw(ctx, toScreen, flow);
+  particles.draw(ctx, toScreenR, flow);
 
   // Airfoil
   const foilPts = flow.airfoilPoints(200);
 
   // Fill airfoil
   ctx.beginPath();
-  const fs0 = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+  const fs0 = toScreenR(foilPts[0].zeta[0], foilPts[0].zeta[1]);
   ctx.moveTo(fs0[0], fs0[1]);
   for (let i = 1; i < foilPts.length; i++) {
-    const s = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+    const s = toScreenR(foilPts[i].zeta[0], foilPts[i].zeta[1]);
     ctx.lineTo(s[0], s[1]);
   }
   ctx.closePath();
@@ -560,8 +573,8 @@ function frame(t) {
   if (showPressure) {
     const n = foilPts.length;
     for (let i = 0; i < n - 1; i++) {
-      const p0 = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
-      const p1 = toScreen(foilPts[i+1].zeta[0], foilPts[i+1].zeta[1]);
+      const p0 = toScreenR(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+      const p1 = toScreenR(foilPts[i+1].zeta[0], foilPts[i+1].zeta[1]);
       ctx.beginPath();
       ctx.moveTo(p0[0], p0[1]);
       ctx.lineTo(p1[0], p1[1]);
@@ -575,7 +588,7 @@ function frame(t) {
   ctx.beginPath();
   ctx.moveTo(fs0[0], fs0[1]);
   for (let i = 1; i < foilPts.length; i++) {
-    const s = toScreen(foilPts[i].zeta[0], foilPts[i].zeta[1]);
+    const s = toScreenR(foilPts[i].zeta[0], foilPts[i].zeta[1]);
     ctx.lineTo(s[0], s[1]);
   }
   ctx.closePath();
@@ -586,12 +599,12 @@ function frame(t) {
   // Stagnation points indicator
   ctx.fillStyle = '#f59e0b';
   // Forward stagnation: approximate
-  const stag = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+  const stag = toScreenR(foilPts[0].zeta[0], foilPts[0].zeta[1]);
 
   // Chord line (faint)
-  const TE = toScreen(foilPts[0].zeta[0], foilPts[0].zeta[1]);
+  const TE = toScreenR(foilPts[0].zeta[0], foilPts[0].zeta[1]);
   const halfN = Math.floor(foilPts.length / 2);
-  const LE = toScreen(foilPts[halfN].zeta[0], foilPts[halfN].zeta[1]);
+  const LE = toScreenR(foilPts[halfN].zeta[0], foilPts[halfN].zeta[1]);
   ctx.beginPath(); ctx.moveTo(TE[0], TE[1]); ctx.lineTo(LE[0], LE[1]);
   ctx.strokeStyle = 'rgba(148,163,184,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
   ctx.stroke(); ctx.setLineDash([]);
@@ -599,7 +612,7 @@ function frame(t) {
   // Free-stream arrow
   const arrowLen = 60;
   const ax = W - 80, ay = 40;
-  const adx = arrowLen * Math.cos(-params.alpha), ady = arrowLen * Math.sin(-params.alpha);
+  const adx = arrowLen, ady = 0;
   ctx.beginPath();
   ctx.moveTo(ax - adx/2, ay - ady/2);
   ctx.lineTo(ax + adx/2, ay + ady/2);
