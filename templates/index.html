@@ -29,6 +29,10 @@
   button:hover{background:#334155;color:#e2e8f0}
   button.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
   #hint{font-size:11px;color:#475569;line-height:1.5}
+  #sheet-header{display:none}
+  #drag-handle{width:36px;height:4px;background:#334155;border-radius:2px;margin:0 auto 4px}
+  #btn-close-sidebar{background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:0;line-height:1}
+  #btn-close-sidebar:hover{color:#e2e8f0}
   /* Mobile toggle button */
   #menu-toggle{display:none;position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:60;background:rgba(59,130,246,0.92);color:#fff;border:none;border-radius:20px;padding:10px 22px;font-size:13px;font-family:'Segoe UI',system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:background .15s;white-space:nowrap}
   #menu-toggle:hover{background:#3b82f6}
@@ -37,6 +41,7 @@
     body{flex-direction:column;overflow:hidden}
     #sidebar{position:fixed;bottom:0;left:0;right:0;width:100%;min-width:unset;max-height:72vh;border-right:none;border-top:2px solid #3b82f6;border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:50;overflow-y:auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
     #sidebar.open{transform:translateY(0)}
+    #sheet-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
     #canvas-wrap{width:100%;flex:1;min-height:0}
     #legend{bottom:calc(72px + env(safe-area-inset-bottom));right:10px;padding:8px 10px}
     #legend .grad{width:120px}
@@ -52,6 +57,10 @@
 <body>
 
 <div id="sidebar">
+  <div id="sheet-header">
+    <div id="drag-handle"></div>
+    <button id="btn-close-sidebar">✕</button>
+  </div>
   <h1>Joukowski Airfoil</h1>
   <h2>Potential Flow Visualizer</h2>
 
@@ -687,8 +696,10 @@ function frame(t) {
 const menuToggle = document.getElementById('menu-toggle');
 const sidebar = document.getElementById('sidebar');
 menuToggle.addEventListener('click', () => {
-  const open = sidebar.classList.toggle('open');
-  menuToggle.textContent = open ? '✕ Close' : '⚙ Controls';
+  sidebar.classList.add('open');
+});
+document.getElementById('btn-close-sidebar').addEventListener('click', () => {
+  sidebar.classList.remove('open');
 });
 
 // Recompute static lines when toggled on
