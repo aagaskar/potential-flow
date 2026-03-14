@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Joukowski Airfoil — Potential Flow</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
@@ -29,11 +29,38 @@
   button:hover{background:#334155;color:#e2e8f0}
   button.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
   #hint{font-size:11px;color:#475569;line-height:1.5}
+  #sheet-header{display:none}
+  #drag-handle{width:36px;height:4px;background:#334155;border-radius:2px;margin:0 auto 4px}
+  #btn-close-sidebar{background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:0;line-height:1}
+  #btn-close-sidebar:hover{color:#e2e8f0}
+  /* Mobile toggle button */
+  #menu-toggle{display:none;position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:60;background:rgba(59,130,246,0.92);color:#fff;border:none;border-radius:30px;padding:14px 36px;font-size:15px;font-weight:600;font-family:'Segoe UI',system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.6);transition:background .15s;white-space:nowrap;letter-spacing:.3px}
+  #menu-toggle:hover{background:#3b82f6}
+  /* Responsive layout */
+  @media(max-width:768px){
+    body{flex-direction:column;overflow:hidden}
+    #sidebar{position:fixed;bottom:0;left:0;right:0;width:100%;min-width:unset;max-height:45vh;border-right:none;border-top:2px solid #3b82f6;border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:50;overflow-y:auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+    #sidebar.open{transform:translateY(0)}
+    #sheet-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+    #canvas-wrap{width:100%;flex:1;min-height:0}
+    #legend{bottom:calc(72px + env(safe-area-inset-bottom));right:10px;padding:8px 10px}
+    #legend .grad{width:120px}
+    .btn-row{flex-wrap:wrap}
+    button{padding:8px 12px;font-size:13px;min-height:36px}
+    input[type=range]{height:8px}
+    input[type=range]::-webkit-slider-thumb{width:22px;height:22px}
+    input[type=range]::-moz-range-thumb{width:22px;height:22px}
+    #menu-toggle{display:block}
+  }
 </style>
 </head>
 <body>
 
 <div id="sidebar">
+  <div id="sheet-header">
+    <div id="drag-handle"></div>
+    <button id="btn-close-sidebar">✕</button>
+  </div>
   <h1>Joukowski Airfoil</h1>
   <h2>Potential Flow Visualizer</h2>
 
@@ -80,7 +107,7 @@
   </div>
 
   <div id="hint">
-    Drag on the canvas to pan. Scroll to zoom.<br>
+    Drag to pan · Scroll or pinch to zoom.<br>
     The Kutta condition sets the circulation so flow
     leaves the trailing edge smoothly.
   </div>
@@ -88,6 +115,7 @@
 
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
+  <button id="menu-toggle">⚙ Controls</button>
   <div id="legend">
     <div>Pressure coefficient C<sub>p</sub></div>
     <div class="grad" id="cp-grad"></div>
@@ -162,6 +190,40 @@ canvas.addEventListener('wheel', e => {
   const factor = e.deltaY > 0 ? 0.92 : 1.08;
   view.scale *= factor;
 }, { passive: false });
+
+// Touch pan & pinch-zoom
+let lastTouchDist = null;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    dragging = true;
+    lastMx = e.touches[0].clientX; lastMy = e.touches[0].clientY;
+    lastTouchDist = null;
+  } else if (e.touches.length === 2) {
+    dragging = false;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.hypot(dx, dy);
+  }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && dragging) {
+    const mx = e.touches[0].clientX, my = e.touches[0].clientY;
+    view.cx -= (mx - lastMx) / view.scale;
+    view.cy += (my - lastMy) / view.scale;
+    lastMx = mx; lastMy = my;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    if (lastTouchDist) view.scale *= dist / lastTouchDist;
+    lastTouchDist = dist;
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => {
+  if (e.touches.length === 0) { dragging = false; lastTouchDist = null; }
+});
 
 // ===== UI controls =====
 const sl = id => document.getElementById(id);
@@ -629,6 +691,16 @@ function frame(t) {
   ctx.fillStyle = '#60a5fa'; ctx.font = '11px system-ui';
   ctx.fillText('U∞', ax - 10, ay - 12);
 }
+
+// Mobile controls toggle
+const menuToggle = document.getElementById('menu-toggle');
+const sidebar = document.getElementById('sidebar');
+menuToggle.addEventListener('click', () => {
+  sidebar.classList.add('open');
+});
+document.getElementById('btn-close-sidebar').addEventListener('click', () => {
+  sidebar.classList.remove('open');
+});
 
 // Recompute static lines when toggled on
 sl('btn-streamlines').addEventListener('click', () => {
